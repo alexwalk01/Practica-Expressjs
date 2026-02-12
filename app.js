@@ -1,86 +1,94 @@
+require('dotenv').config();
 const express = require('express');
-const fs = require('fs').promises;
-const path = require('path');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const app = express();
 app.use(express.json());
 
-const usersFile = path.join(__dirname, 'users.json');
+const PORT = process.env.PORT;
+const MONGO_URI = process.env.MONGO_URI;
+const DB_NAME = process.env.DB_NAME;
 
-const readUsers = async () => {
-  try {
-    const data = await fs.readFile(usersFile, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    return [];
-  }
-};
+let db;
+let usersCollection;
 
-const writeUsers = async (users) => {
-  await fs.writeFile(usersFile, JSON.stringify(users, null, 2));
-};
+// Conexión a MongoDB
+MongoClient.connect(MONGO_URI)
+  .then((client) => {
+    db = client.db(DB_NAME);
+    usersCollection = db.collection('users');
+    console.log('Conectado a MongoDB');
 
+    app.listen(PORT, () => {
+      console.log(`Servidor corriendo en el puerto ${PORT}`);
+    });
+  })
+  .catch((err) => console.error(err));
+
+/* ============================
+   CRUD DE USUARIOS
+============================ */
+
+// GET TODOS
 app.get('/users', async (req, res) => {
-  const users = await readUsers();
+  const users = await usersCollection.find().toArray();
   res.json(users);
 });
 
+// GET POR ID
 app.get('/users/:id', async (req, res) => {
-  const users = await readUsers();
-  const id = Number(req.params.id);
-  const user = users.find((u) => u.id === id);
+  try {
+    const user = await usersCollection.findOne({
+      _id: new ObjectId(req.params.id),
+    });
 
-  if (!user) {
-    return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    res.json(user);
+  } catch {
+    res.status(400).json({ error: 'ID inválido' });
   }
-  res.json(user);
 });
 
+// POST
 app.post('/users', async (req, res) => {
-  const users = await readUsers();
-  const newUser = {
-    id: req.body.id,
-    password: req.body.password,
-    first_name: req.body.first_name,
-    last_name: req.body.last_name,
-    username: req.body.username,
-    email: req.body.email,
-    gender: req.body.gender,
-  };
-
-  users.push(newUser);
-  await writeUsers(users);
-  res.status(201).json(newUser);
+  const result = await usersCollection.insertOne(req.body);
+  res.status(201).json(result);
 });
 
-app.delete('/users/:id', async (req, res) => {
-  const users = await readUsers();
-  const id = Number(req.params.id);
-  const index = users.findIndex((u) => u.id === id);
-
-  if (index === -1) {
-    return res.status(404).json({ error: 'Usuario no encontrado' });
-  }
-
-  users.splice(index, 1);
-  await writeUsers(users);
-  res.json({ message: 'Usuario eliminado' });
-});
-
+// PUT
 app.put('/users/:id', async (req, res) => {
-  const users = await readUsers();
-  const id = Number(req.params.id);
-  const index = users.findIndex((u) => u.id === id);
+  try {
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: req.body },
+    );
 
-  if (index === -1) {
-    return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    res.json({ message: 'Usuario actualizado' });
+  } catch {
+    res.status(400).json({ error: 'ID inválido' });
   }
-
-  users[index] = { ...users[index], ...req.body, id };
-  await writeUsers(users);
-  res.json(users[index]);
 });
 
-app.listen(3002, () => {
-  console.log('Servidor corriendo en el puerto 3002');
+// DELETE
+app.delete('/users/:id', async (req, res) => {
+  try {
+    const result = await usersCollection.deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    res.json({ message: 'Usuario eliminado' });
+  } catch {
+    res.status(400).json({ error: 'ID inválido' });
+  }
 });
