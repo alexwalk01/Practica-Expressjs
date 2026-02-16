@@ -3,6 +3,10 @@ import { feathers } from '@feathersjs/feathers'
 import authenticationClient from '@feathersjs/authentication-client'
 export {}
 
+export {}
+
+export {}
+
 /**
  * Returns a  client for the practica-express app.
  *
@@ -19,6 +23,10 @@ export const createClient = (connection, authenticationOptions = {}) => {
   client.set('connection', connection)
 
   client.configure(usersClient)
+
+  client.configure(productsClient)
+
+  client.configure(purchasesClient)
 
   return client
 }
